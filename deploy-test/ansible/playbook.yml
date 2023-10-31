@@ -1,0 +1,13 @@
+---
+# Test de l'image avec un Docker-Compose
+- name: Lancer le Docker-Compose de test sur la Vm
+  hosts: vm-test
+  remote_user: 
+  gather_facts: false
+  become: true
+
+  vars_files:
+    - vars.yml
+
+  roles:
+    - vm-test

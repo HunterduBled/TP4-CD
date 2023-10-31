@@ -1,0 +1,32 @@
+- name: Install Git
+  apt:
+    name: git
+    state: present
+
+- name: Clone repository
+  git:
+    repo: "{{ URL_REPO_APP }}"
+    dest: ./python-api-handle-it
+
+- name: Télécharger la dernière version de Docker
+  get_url:
+    url: https://get.docker.com/
+    dest: /tmp/get-docker.sh
+  become: true
+
+- name: Installer Docker
+  command: sh /tmp/get-docker.sh
+  args:
+    creates: /usr/bin/docker
+  become: true
+  notify: Redémarrer Docker
+
+- name: Install Docker Compose
+  apt:
+    name: docker-compose
+    state: present
+
+- name: Start Docker Compose
+  command: docker-compose up -d
+  args:
+    chdir: ./python-api-handle-it/docker-test/

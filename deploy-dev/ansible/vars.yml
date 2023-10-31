@@ -1,0 +1,17 @@
+---
+## -- Variables pour le déploiement de l'image Docker sur la 'vm-dev' --
+
+# Variable 'vm-dev' internal IP :
+VmDev_internal_ip: "10.0.0.2"
+
+#---------------------------------------------------------------------------------------#
+
+# DOCKER_USER: $DOCKER_USER
+DOCKER_TOKEN: $DOCKER_TOKEN
+# CONTAINER_NAME: $CONTAINER_NAME
+# IMAGE_NAME: $DOCKER_USER/$DOCKER_REPO:$DOCKER_IMAGE_VERSION
+
+DOCKER_USER: ""   
+# DOCKER_TOKEN: "le récupérer sur gitlab.com"
+CONTAINER_NAME: "vm-dev-image-docker"
+IMAGE_NAME: "imagePythonTp3GitlabCI:v1.0"

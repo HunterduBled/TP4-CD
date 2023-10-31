@@ -1,0 +1,9 @@
+---
+## -- Variables pour le déploiement de l'image Docker sur la 'vm-dev' --
+
+# Variable 'vm-dev' internal IP :
+VmTest_internal_ip: "10.0.0.2"
+
+#---------------------------------------------------------------------------------------#
+
+URL_REPO_APP : "https://github.com/JoffreyBENA/python-api-handle-it.git"

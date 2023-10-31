@@ -1,0 +1,249 @@
+stages:
+  - retrieve_image
+  - check_vulnerabilities
+  - deploy
+  - retrieve_ip_and_port
+  - functional_test
+  - generate_global_report
+
+variables:
+# retrieve_image
+  DOCKER_REGISTRY: "docker.io"                              # URL du registre Docker pour stocker l'image Docker (ici "docker.io" est le registre Docker public par défaut)
+  DOCKER_USER: ""                                   # Nom d'utilisateur du compte Docker Hub
+  DOCKER_REPO: "imagePythonTp3GitlabCI"                    # Nom du repository Docker ou est stocké l'image Docker
+  DOCKER_IMAGE_VERSION: "v1.0"                              # Nom de la version de l'image construite et poussée sur le Hub Docker
+  IMAGE_REPO_PATH: "./image_app"                            # Chemin ou l'image Docker sera enregistrée
+  IMAGE_OS: "docker:latest"                                 # Image Docker utilisée pour les jobs de la pipeline
+# check_vulnerabilities
+  CHECK_VULNERABILITIES_REPORT_PATH: "./reports/check"      # Chemin vers les rapports de vérification de vulnérabilités
+# deploy
+  ENVIRONMENT_TYPE: "dev"                                   # Type d'environnement cible : dev ou test ou prod
+# retrieve_ip_and_port
+  # retrieve_ip_and_port_dev
+  GCLOUD_PROJECT_ID: ""               # ID du projet Google Cloud
+  GCLOUD_ZONE: "europe-west9-c"                             # Zone du déploiement sur Google Cloud
+  VM_NAME: "vm-dev"                                         # Nom de la machine virtuelle Google Cloud
+  CONTAINER_NAME: "vm-dev-image-docker"                     # Nom du conteneur Docker sur la machine virtuelle
+  IMAGE_NAME: "imagePythonTp3GitlabCI:v1.0"                # Nom de l'image Docker à déployer
+# functional_test
+  ROBOTFRAMEWORK_REPORT_PATH: "./reports/robotframework"    # Chemin vers les rapports Robotframework
+  ROBOTFRAMEWORK_FILE: "./test/system/machine.robot"        # Chemin des fichiers de tests fonctionnels Robotframework
+
+retrieve_image:
+  stage: retrieve_image
+  image: $IMAGE_OS
+  services:
+    # - alpine:latest "pour conteneur gitlab localhost"
+    - docker:dind
+  before_script:
+    - echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USER" --password-stdin "$DOCKER_REGISTRY"
+  script:
+    - docker pull $DOCKER_USER/$DOCKER_REPO:$DOCKER_IMAGE_VERSION
+
+check_vulnerabilities:
+  stage: check_vulnerabilities
+  image: $IMAGE_OS
+  services:
+    - docker:dind
+  before_script:
+    - echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USER" --password-stdin "$DOCKER_REGISTRY"
+    - wget https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -O install-scout.sh
+    - chmod +x install-scout.sh
+  script:
+    - sh install-scout.sh
+    - docker pull $DOCKER_USER/$DOCKER_REPO:$DOCKER_IMAGE_VERSION
+    - docker scout quickview $DOCKER_USER/$DOCKER_REPO:$DOCKER_IMAGE_VERSION
+    # - docker scout cves  $DOCKER_USER/$DOCKER_REPO:$DOCKER_IMAGE_VERSION              # View vulnerabilities
+    # - docker scout recommendations $DOCKER_USER/$DOCKER_REPO:$DOCKER_IMAGE_VERSION    # View base image update recommendations
+
+deploy_dev:
+  stage: deploy
+  image : user/cicd:latest
+  before_script:
+  - echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USER" --password-stdin "$DOCKER_REGISTRY"
+  - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+  - gcloud auth activate-service-account --key-file=.secure_files/credentials.json
+  script:
+    - cp .secure_files/credentials.json ./deploy-dev/credentials.json  # Copiez le fichier depuis Secure Files vers le répertoire deploy-dev
+    - cd deploy-dev
+    - echo "Déploiement sur l'environnement de développement"
+    - chmod +x deploy.sh
+    - ./deploy.sh
+  only:
+    variables:
+      - $ENVIRONMENT_TYPE == "dev"
+
+deploy_test:
+  stage: deploy
+  before_script:
+  - echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USER" --password-stdin "$DOCKER_REGISTRY"
+  - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+  - gcloud auth activate-service-account --key-file=.secure_files/credentials.json
+  script:
+    - cp .secure_files/credentials.json ./deploy-dev/credentials.json  # Copiez le fichier depuis Secure Files vers le répertoire deploy-dev
+    - cd deploy-test
+    - echo "Déploiement sur l'environnement de test"
+    - chmod +x deploy.sh
+    - ./deploy.sh
+  only:
+    variables:
+      - $ENVIRONMENT_TYPE == "test"
+
+deploy_prod:
+  stage: deploy
+  before_script:
+  - echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USER" --password-stdin "$DOCKER_REGISTRY"
+  - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+  - gcloud auth activate-service-account --key-file=.secure_files/credentials.json
+  script:
+    - cp .secure_files/credentials.json ./deploy-dev/credentials.json  # Copiez le fichier depuis Secure Files vers le répertoire deploy-dev
+    - cd deploy-prod
+    - echo "Déploiement sur l'environnement de test"
+    - chmod +x deploy.sh
+    - ./deploy.sh
+  only:
+    variables:
+      - $ENVIRONMENT_TYPE == "prod"
+
+# deploy_dev:
+#   stage: deploy
+#   image: google/cloud-sdk:latest
+  # before_script:
+  #   - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+#   script:
+#     # Authentification au compte GCP
+#     - echo "Déploiement sur l'environnement de développement"
+#     - gcloud auth activate-service-account --key-file=.secure_files/credentials.json
+#     - gcloud config set project $GCLOUD_PROJECT_ID
+
+#     # Génération de la paire de clés SSH
+#     - ssh-keygen -t rsa  -f ~/.ssh/$KEY_FILENAME -N -C $SSH_USER -b 2048
+
+#     # # Créer un réseau VPC
+#     # - gcloud compute networks create $NETWORK_NAME --subnet-mode=auto
+
+#     # # Créer une règle de pare-feu permettant le trafic SSH
+#     # - gcloud compute firewall-rules create allow-ssh --network=$NETWORK_NAME --allow=tcp:22
+
+#     # Créer une instance VM dans le réseau avec la clé SSH publique
+#     - gcloud compute instances create $VM_NAME --zone=$GCLOUD_ZONE --machine-type=e2-small --image-family=debian-10 --image-project=debian-cloud --metadata-from-file ssh-keys=$SSH_USER:~/.ssh/$KEY_FILENAME.pub #--network=$NETWORK_NAME
+
+#     # Récupérer l'adresse IP externe de l'instance VM
+#     - EXTERNAL_IP=$(gcloud compute instances describe $VM_NAME --zone=$GCLOUD_ZONE --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
+#     - echo "L'adresse IP de l'instance VM est $EXTERNAL_IP"
+
+#     # Connexion SSH à l'instance VM en spécifiant la clé SSH privée
+#     - ssh $SSH_USER@$EXTERNAL_IP
+
+#     # - gcloud compute ssh $VM_NAME --zone $GCLOUD_ZONE --ssh-key-file /root/.ssh/id_rsa.pub
+
+#     # Connexion au Docker Hub, pull et lancement de l'image
+#     - gcloud compute ssh $VM_NAME --zone $GCLOUD_ZONE --ssh-key-file /root/.ssh/id_rsa.pub --command "echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USER" --password-stdin "$DOCKER_REGISTRY""
+#     - gcloud compute ssh $VM_NAME --zone $GCLOUD_ZONE --ssh-key-file /root/.ssh/id_rsa.pub --command "sudo apt-get update && sudo apt-get install -y docker.io"
+#     - gcloud compute ssh $VM_NAME --zone $GCLOUD_ZONE --ssh-key-file /root/.ssh/id_rsa.pub --command "docker run -d -p 8080:5000 $DOCKER_USER/$DOCKER_REPO:$DOCKER_IMAGE_VERSION"
+
+#   only:
+#     variables:
+#       - $ENVIRONMENT_TYPE == "dev"
+
+retrieve_ip_and_port_dev:
+  stage: retrieve_ip_and_port
+  image: google/cloud-sdk:latest
+  before_script:
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+  script:
+    - echo "Récupération de l'adresse IP et du port pour l'environnement de développement"
+    - cp .secure_files/credentials.json .  # Copiez le fichier depuis Secure Files vers le répertoire de travail
+    - gcloud auth activate-service-account --key-file=credentials.json  # Utilisez le fichier credentials.json
+    - gcloud config set project $GCLOUD_PROJECT_ID
+    - IP_ADDRESS=$(gcloud compute instances describe $VM_NAME --zone=$GCLOUD_ZONE --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+    - APP_PORT=$(gcloud compute ssh $VM_NAME --zone $GCLOUD_ZONE --command "docker ps -f name=$CONTAINER_NAME --format '{{.Ports}}' | cut -d ':' -f 2 | cut -d '-' -f 1")
+    - echo "L'Adresse IP de l'application est $IP_ADDRESS"
+    - echo "Le port de l'application est $APP_PORT"
+  only:
+    variables:
+      - $ENVIRONMENT_TYPE == "dev"
+
+retrieve_ip_and_port_test:
+  stage: retrieve_ip_and_port
+  image: $IMAGE_OS
+  script:
+    - echo "Récupération de l'adresse IP et du port pour l'environnement de test"
+    - docker-compose up -d
+    - CONTAINER_ID=$(docker ps -qf "name=nom_du_service")  # Remplacez "nom_du_service" par le nom de votre service dans le fichier docker-compose.yml
+    - IP_ADDRESS=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $CONTAINER_ID)
+    - APP_PORT=$(docker inspect -f '{{(index (index .NetworkSettings.Ports "80/tcp") 0).HostPort}}' $CONTAINER_ID)  # Remplacez "80/tcp" par le port que votre application expose dans le fichier docker-compose.yml
+    - echo "L'Adresse IP de l'application est $IP_ADDRESS"
+    - echo "Le port de l'application est $APP_PORT"
+  only:
+    variables:
+      - $ENVIRONMENT_TYPE == "test"
+
+retrieve_ip_and_port_prod:
+  stage: retrieve_ip_and_port
+  image: $IMAGE_OS
+  script:
+    - echo "Récupération de l'adresse IP et du port pour l'environnement de production"
+    - IP_ADDRESS=$(kubectl get service mon-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')  # Remplacez "mon-service" par le nom de votre service dans Kubernetes
+    - APP_PORT=$(kubectl get service mon-service -o jsonpath='{.spec.ports[0].nodePort}')  # Remplacez "mon-service" par le nom de votre service dans Kubernetes
+    - echo "L'Adresse IP de l'application est $IP_ADDRESS"
+    - echo "Le port de l'application est $APP_PORT"
+  only:
+    variables:
+      - $ENVIRONMENT_TYPE == "prod"
+
+functional_test:
+  stage: functional_test
+  image: $IMAGE_OS
+  before_script:
+    - echo "Installing dependencies..."
+    - apt-get update && apt-get install -y python3 python3-pip
+    - python3 -m pip install --upgrade pip
+    - pip install robotframework
+  script:
+    - echo "Running robotframework..."
+    - mkdir -p $ROBOTFRAMEWORK_REPORT_PATH
+    - robot --outputdir reports $ROBOTFRAMEWORK_FILE
+  artifacts:
+    paths:
+      - $IMAGE_REPO_PATH/$ROBOTFRAMEWORK_REPORT_PATH
+
+generate_global_report:
+  stage: generate_global_report
+  script:
+    # Action 1 : Compilation des informations des tests
+      - echo "Compiling test information..."
+      # Placez ici les commandes pour compiler les informations des tests
+
+      # Récupération des adresses IP et des ports en fonction de l'environnement
+      - if [ "$ENVIRONMENT_TYPE" == "dev" ]; then
+          echo "Récupération des adresses IP et des ports pour l'environnement de développement";
+          # Placez ici les commandes pour récupérer l'adresse IP et le port de l'environnement de développement
+      - elif [ "$ENVIRONMENT_TYPE" == "test" ]; then
+          echo "Récupération des adresses IP et des ports pour l'environnement de test";
+          # Placez ici les commandes pour récupérer l'adresse IP et le port de l'environnement de test
+      - elif [ "$ENVIRONMENT_TYPE" == "prod" ]; then
+          echo "Récupération des adresses IP et des ports pour l'environnement de production";
+          # Placez ici les commandes pour récupérer l'adresse IP et le port de l'environnement de production
+      - else
+          echo "Environnement non reconnu $ENVIRONMENT_TYPE";
+      - fi
+
+    # Action 2 : Création d'un fichier de rapport en HTML
+      - echo "Creating an HTML report..."
+      # Placez ici les commandes pour créer un fichier HTML de rapport en utilisant les informations compilées
+
+    # Action 3 : Archivage du rapport en tant qu'artefact avec des dépendances
+  artifacts:
+    paths:
+      - path/to/your/report.html  # Spécifiez le chemin complet du fichier de rapport
+  dependencies:
+    - retrieve_image
+    - check_vulnerabilities
+    - deploy_dev
+    - deploy_test
+    - deploy_prod
+    - retrieve_ip_and_port_dev
+    - retrieve_ip_and_port_test
+    - retrieve_ip_and_port_prod
+    - functional_test
